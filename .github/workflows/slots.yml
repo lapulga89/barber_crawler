@@ -10,7 +10,7 @@ on:
         description: 'End-Datum (YYYY-MM-DD, leer = +7 Tage)'
         required: false
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/10 5-20 * * *'
 
 jobs:
   run:
