@@ -1,0 +1,23 @@
+name: Dennis-Slot-Checker
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: python -m pip install --quiet requests
+
+      - name: Run checker
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PW:   ${{ secrets.GMAIL_PW }}
+        run: python checker.py
