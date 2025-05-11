@@ -81,4 +81,5 @@ if __name__ == "__main__":
         else:
             send_mail("Dennis-Status", "Kein Slot frei.")
     except Exception:
-        send_mail("Dennis-Checker Fehler", traceback.format_exc())
+        traceback.print_exc()
+        raise
