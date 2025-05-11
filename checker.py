@@ -1,25 +1,52 @@
-# checker.py
-import requests, datetime, smtplib, os, traceback
+#!/usr/bin/env python3
+"""
+Dennis-Slot-Checker – Minimal Header Edition
+"""
 
-EMPLOYEE_ID = 25902
+import datetime
+import locale
+import os
+import smtplib
+import traceback
+
+import requests
+from email.mime.text import MIMEText
+
+# --------------------------------- Konstante(n) ---------------------------------
 STUDIO_ID   = 39100
-SERVICE_ID  = 20325
+EMPLOYEE_ID = 25902          # Dennis
+SERVICE_ID  = 20325          # „Herren kurz“
 MAIL_TO     = "lapulga89@gmail.com"
 
-def send_mail(subject, body):
+# Deutsche Wochentags- / Datumsformatierung
+try:
+    locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
+except locale.Error:
+    # Fallback, falls Runner-Container de_DE nicht installiert hat
+    pass
+
+# Nur absolut erforderliche Header
+HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+
+# -------------------------------------------------------------------------------
+def send_mail(subject: str, body: str) -> None:
     user = os.environ["GMAIL_USER"]
     pw   = os.environ["GMAIL_PW"]
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(user, pw)
-        s.sendmail(user, MAIL_TO,
-                   f"Subject: {subject}\n\n{body}")
+
+    msg = MIMEText(body, _charset="utf-8")
+    msg["Subject"] = subject
+    msg["From"]    = user
+    msg["To"]      = MAIL_TO
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(user, pw)
+        server.send_message(msg)
+
 
 def fetch_slots():
-    sess = requests.Session()
-    salon_url = f"https://www.studiobookr.com/david-fechner-friseur-{STUDIO_ID}"
-    html = sess.get(salon_url, timeout=10).text
-    token = html.split('anti-forgery-token" value="')[1].split('"')[0]
-
     today = datetime.date.today()
     payload = {
         "studioId": STUDIO_ID,
@@ -27,32 +54,31 @@ def fetch_slots():
         "end":   str(today + datetime.timedelta(days=7)),
         "employeeId": EMPLOYEE_ID,
         "servicePackageId": None,
-        "serviceIds": [SERVICE_ID]
+        "serviceIds": [SERVICE_ID],
     }
 
-    r = sess.post(
+    r = requests.post(
         "https://www.studiobookr.com/AppointmentAvailabilities/Get",
         json=payload,
-        headers={
-            "anti-forgery-token": token,
-            "accept": "application/json, text/plain, */*",
-            "content-type": "application/json",
-            "origin": "https://www.studiobookr.com",
-            "referer": salon_url
-        },
-        timeout=10
+        headers=HEADERS,
+        timeout=10,
     )
     r.raise_for_status()
     return r.json().get("availabilities", [])
 
+
 if __name__ == "__main__":
     try:
         avail = fetch_slots()
+
         if avail:
-            times = "\n".join([a['start'] for a in avail])
-            send_mail("✅ Dennis: freie Slots!", times)
+            lines = [
+                datetime.datetime.fromisoformat(a["start"])
+                .strftime("%a, %d.%m. %H:%M Uhr")
+                for a in avail
+            ]
+            send_mail("Dennis: freie Slots!", "\n".join(lines))
         else:
-            send_mail("ℹ️ Dennis-Status", "Kein Slot frei.")
-    except Exception as e:
-        send_mail("❌ Dennis-Checker Fehler",
-                  traceback.format_exc())
+            send_mail("Dennis-Status", "Kein Slot frei.")
+    except Exception:
+        send_mail("Dennis-Checker Fehler", traceback.format_exc())
