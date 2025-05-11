@@ -1,6 +1,7 @@
-name: Dennis-Slot-Checker
+name: Barber-Slot-Checker
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '*/10 * * * *'
 
