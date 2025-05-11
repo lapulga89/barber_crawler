@@ -1,7 +1,14 @@
-name: Barber-Slot-Checker
+name: Dennis Slot Checker (10-Min + manuell mit Datum)
 
 on:
   workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start-Datum (YYYY-MM-DD, leer = heute)'
+        required: false
+      end_date:
+        description: 'End-Datum (YYYY-MM-DD, leer = +7 Tage)'
+        required: false
   schedule:
     - cron: '*/10 * * * *'
 
@@ -9,16 +16,18 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
+    env:                           # global für Job
+      START_DATE: ${{ github.event.inputs.start_date }}
+      END_DATE:   ${{ github.event.inputs.end_date }}
+      TZ: Europe/Berlin
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Install Python dependencies
-        run: python -m pip install --quiet requests
-
-      - name: Run checker
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: pip install --quiet requests python-dateutil
+      - name: Check and notify
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PW:   ${{ secrets.GMAIL_PW }}
+          START_DATE: ${{ env.START_DATE }}
+          END_DATE:   ${{ env.END_DATE }}
         run: python checker.py

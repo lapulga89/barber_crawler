@@ -1,35 +1,17 @@
 #!/usr/bin/env python3
-"""
-Dennis-Slot-Checker – statischer Header-Call
-Sucht alle 10 Minuten nach freien Terminen (heute → +7 Tage)
-und mailt nur, wenn Slots gefunden werden.
-"""
-
-import datetime
-import locale
-import os
-import smtplib
-import traceback
+import datetime, locale, os, smtplib, traceback, json, sys
 from email.mime.text import MIMEText
+import requests, dateutil.parser
 
-import requests
-
-# --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------
 #  KONSTANTEN
-# --------------------------------------------------------------------------- #
-STUDIO_ID   = 39100
+# --------------------------------------------------------------------------
 EMPLOYEE_ID = 25902          # Dennis
+STUDIO_ID   = 39100
 SERVICE_ID  = 20325
 MAIL_TO     = "lapulga89@gmail.com"
 
-# deutsche Datums­formatierung, wenn verfügbar
-try:
-    locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
-except locale.Error:
-    pass
-
-# ----- feste Header aus deinem funktionierenden Curl ----------------------- #
-HEADERS = {
+HEADERS = {   # ← unverändert aus deinem funktionierenden Call
     "accept": "application/json, text/plain, */*",
     "accept-language": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
     "anti-forgery-token": "cwhTliQgsxmtSh7i1tgIPc4-N5XdTe_LLF__nEFPlYGKrz_6mI17FLmwHrNAdGyJMmQlWBbPFrq1CzmpAgKCmw==",
@@ -48,57 +30,59 @@ HEADERS = {
     "sentry-trace": "ec3fc740789f43e69246c2603dcb5834-8e17ba999487adaf-0",
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
 }
-
 URL = "https://www.studiobookr.com/AppointmentAvailabilities/Get"
 
-# --------------------------------------------------------------------------- #
-#  HILFSFUNKTIONEN
-# --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------
 def send_mail(subject: str, body: str) -> None:
-    user = os.environ["GMAIL_USER"]
-    pw   = os.environ["GMAIL_PW"]
-
-    msg = MIMEText(body, _charset="utf-8")
-    msg["Subject"] = subject
-    msg["From"]    = user
-    msg["To"]      = MAIL_TO
-
+    user = os.environ["GMAIL_USER"]; pw = os.environ["GMAIL_PW"]
+    msg  = MIMEText(body, _charset="utf-8")
+    msg["Subject"], msg["From"], msg["To"] = subject, user, MAIL_TO
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(user, pw)
-        s.send_message(msg)
+        s.login(user, pw); s.send_message(msg)
 
-def fetch_slots():
-    today = datetime.date.today()
+# --------------------------------------------------------------------------
+def iso_date(inp: str | None, fallback: datetime.date) -> str:
+    if not inp:
+        return str(fallback)
+    return dateutil.parser.parse(inp).date().isoformat()
+
+def fetch_slots(start_iso: str, end_iso: str):
     payload = {
         "studioId": STUDIO_ID,
-        "start": str(today),
-        "end":   str(today + datetime.timedelta(days=7)),
-        "employeeId": EMPLOYEE_ID,
+        "start":    start_iso,
+        "end":      end_iso,
+        "employeeId": EMPLOYEE_ID,          # API-Filter behält Dennis, liefert aber manchmal dennoch andere Splits – daher Doppel-Check
         "servicePackageId": None,
-        "serviceIds": [SERVICE_ID]
+        "serviceIds": [SERVICE_ID],
     }
-
     r = requests.post(URL, json=payload, headers=HEADERS, timeout=10)
     r.raise_for_status()
-    return r.json().get("availabilities", [])
+    data = r.json()
+    # ---- zweiter Filter NUR Slots mit Dennis-Split -------------
+    only_dennis = [
+        a for a in data.get("availabilities", [])
+        if any(s["employeeId"] == EMPLOYEE_ID for s in a.get("splits", []))
+    ]
+    return only_dennis
 
-# --------------------------------------------------------------------------- #
-#  HAUPTLOGIK
-# --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------
 if __name__ == "__main__":
     try:
-        avail = fetch_slots()
+        # Datum aus Umgebungs­variablen (kommen aus GitHub-Inputs)
+        today   = datetime.date.today()
+        start   = iso_date(os.getenv("START_DATE"), today)
+        end     = iso_date(os.getenv("END_DATE"),   today + datetime.timedelta(days=7))
+
+        avail = fetch_slots(start, end)
 
         if avail:
-            times = [
+            lines = [
                 datetime.datetime.fromisoformat(a["start"])
                 .strftime("%a, %d.%m. %H:%M Uhr")
                 for a in avail
             ]
-            send_mail("Dennis: freie Slots!", "\n".join(times))
+            send_mail(f"Dennis: {len(avail)} freie Slots", "\n".join(lines))
         else:
-            print("Kein Slot frei.")
+            print("Kein Dennis-Slot frei.")
     except Exception:
-        # Fehler nur ins Actions-Log schreiben
-        traceback.print_exc()
-        raise
+        traceback.print_exc(); raise
