@@ -80,6 +80,18 @@ if __name__ == "__main__":
         start   = iso(os.getenv("START_DATE"), today)
         end     = iso(os.getenv("END_DATE"),   today + datetime.timedelta(days=7))
 
+        # ---------- Zeitraum lesbar loggen -----------------------------
+        start_dt = datetime.datetime.fromisoformat(start)
+        end_dt   = datetime.datetime.fromisoformat(end)
+
+        nice_range = (
+            f"{start_dt.strftime('%-d. %B')}"
+            f" bis "
+            f"{end_dt.strftime('%-d. %B')}"
+            + (f" {end_dt.year}" if start_dt.year != end_dt.year else "")
+        )
+        print(f"📅 Suche freie Slots für: {nice_range}")
+
         slots = fetch_slots(start, end)
 
         if slots:
